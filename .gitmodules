@@ -10,3 +10,9 @@
 [submodule "DiligentFX"]
 	path = DiligentFX
 	url = https://github.com/DiligentGraphics/DiligentFX.git
+[submodule "Experimental/ThirdParty/openvr"]
+	path = Experimental/ThirdParty/openvr
+	url = https://github.com/ValveSoftware/openvr.git
+[submodule "Experimental/ThirdParty/glfw"]
+	path = Experimental/ThirdParty/glfw
+	url = https://github.com/glfw/glfw.git
