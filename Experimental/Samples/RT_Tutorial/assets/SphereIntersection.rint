@@ -1,0 +1,39 @@
+#version 460
+#extension GL_EXT_ray_tracing : require
+#extension GL_GOOGLE_include_directive : require
+
+#include "structures.fxh"
+
+hitAttributeEXT ProceduralGeomIntersectionAttribs  hitAttribs;
+
+layout(std140) buffer readonly un_BoxAttribs { BoxAttribs  g_BoxAttribs[]; };
+
+
+void main()
+{
+    float3  instanceOffset = gl_WorldToObjectEXT[3];
+    float3  rayDir         = gl_WorldRayDirectionEXT;
+
+    BoxAttribs  box       = g_BoxAttribs[gl_InstanceCustomIndexEXT];
+    float3      boxMin    = float3(box.minX, box.minY, box.minZ);
+    float3      boxMax    = float3(box.maxX, box.maxY, box.maxZ);
+    float3      boxSize   = boxMax - boxMin;
+    float3      center    = (boxMax + boxMin) * 0.5;
+    float       radius    = min(boxSize.x, min(boxSize.y, boxSize.z)) * 0.5;
+
+    float3 oc = gl_WorldRayOriginEXT - center + instanceOffset;
+    float  a  = dot(rayDir, rayDir);
+    float  b  = 2.0 * dot(oc, rayDir);
+    float  c  = dot(oc, oc) - radius * radius;
+    float  d  = b * b - 4 * a * c;
+
+    if (d >= 0)
+    {
+        float  hitT = (-b - sqrt(d)) / (2.0 * a);
+        float3 pos  = gl_WorldRayOriginEXT + rayDir * hitT + instanceOffset;
+
+        hitAttribs.Normal = normalize(pos - center);
+
+        reportIntersectionEXT(hitT, RAY_KIND_PROCEDURAL_FRONT_FACE);
+    }
+}

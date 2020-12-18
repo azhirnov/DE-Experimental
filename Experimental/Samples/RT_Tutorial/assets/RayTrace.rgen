@@ -1,0 +1,27 @@
+#version 460
+#extension GL_EXT_ray_tracing : require
+#extension GL_GOOGLE_include_directive : require
+
+#define CAST_PRIMARY_RAY
+#define CAST_SHADOW_RAY
+#include "structures.fxh"
+#include "RayUtils.fxh"
+
+uniform writeonly image2D  g_ColorBuffer;
+
+void main()
+{
+    float3  rayOrigin = g_ConstantsCB.Position.xyz;
+    float2  uv        = float2(gl_LaunchIDEXT.xy) / float2(gl_LaunchSizeEXT.xy - 1);
+    float3  rayDir    = normalize(mix(mix(g_ConstantsCB.FrustumRayLB, g_ConstantsCB.FrustumRayRB, uv.x),
+                                      mix(g_ConstantsCB.FrustumRayLT, g_ConstantsCB.FrustumRayRT, uv.x), uv.y)).xyz;
+
+    RayDesc ray;
+    ray.Origin    = rayOrigin;
+    ray.Direction = rayDir;
+    ray.TMin      = g_ConstantsCB.ClipPlanes.x;
+    ray.TMax      = g_ConstantsCB.ClipPlanes.y;
+
+    PrimaryRayPayload payload = CastPrimaryRay(ray, /*recursion*/0);
+    imageStore(g_ColorBuffer, ivec2(gl_LaunchIDEXT), float4(payload.Color, 1.0));
+}
