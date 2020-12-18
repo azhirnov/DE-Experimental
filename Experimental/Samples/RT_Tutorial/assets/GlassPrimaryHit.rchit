@@ -37,7 +37,7 @@ void main()
     const uint   recursion   = primaryPayload.Recursion;
     const float  AirIOR      = 1.0;
 
-    if (g_ConstantsCB.GlassEnableInterference > 0 && recursion < 2)
+    if (g_ConstantsCB.GlassEnableInterference > 0 && recursion == 0)
     {
         float3  AccumColor = float3(0.0, 0.0, 0.0);
         float3  AccumMask  = float3(0.0, 0.0, 0.0);

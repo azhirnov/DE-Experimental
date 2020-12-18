@@ -8,7 +8,6 @@
 #include "TexturedCube.hpp"
 #include "EngineFactoryVk.h"
 #include "OpenVRDevice.h"
-#include "OpenXRDevice.h"
 #include "VREmulator.h"
 
 namespace DEVR

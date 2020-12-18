@@ -17,6 +17,7 @@ PRIVATE
     ../../../DiligentCore/Graphics/ShaderTools/include
 PUBLIC
     ../../ThirdParty/glsl_trace
+    ../
     src
 )
 

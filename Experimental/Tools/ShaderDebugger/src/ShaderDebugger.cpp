@@ -245,6 +245,7 @@ private:
 
 ShaderDebugger::ShaderDebugInfo::ShaderDebugInfo(ShaderDebugInfo&& other) :
     Mode{other.Mode},
+    Name{std::move(other.Name)},
     Origin{std::move(other.Origin)},
     ClockHeatmapShader{std::move(other.ClockHeatmapShader)},
     pDebugInfo{other.pDebugInfo},
@@ -380,8 +381,8 @@ bool ShaderDebugger::InitDebugOutput(const char* Folder) noexcept
     }
 
     m_OutputFolder = Folder;
-    m_Callback     = [this](auto& output) {
-        DefaultShaderDebugCallback("shader", output);
+    m_Callback     = [this](auto* name, auto& output) {
+        DefaultShaderDebugCallback(name, output);
     };
     return true;
 }
@@ -430,6 +431,9 @@ void ShaderDebugger::CompileFromFile(IShader** ppShader, SHADER_TYPE Type, const
 
     RefCntAutoPtr<DataBlobImpl> pFileData{MakeNewRCObj<DataBlobImpl>{}(0)};
     pSourceStream->ReadBlob(pFileData);
+
+    if (pName == nullptr)
+        pName = pFilePath;
 
     return CompileFromSource(ppShader, Type, static_cast<char*>(pFileData->GetDataPtr()), Uint32(pFileData->GetSize()), pName, pMacro, Mode);
 }
@@ -523,10 +527,10 @@ bool ShaderDebugger::CreatePipeline(const GraphicsPipelineStateCreateInfo& PSOCr
     CreateInfo.PSODesc.ResourceLayout.NumVariables = Uint32(Variables.size());
     CreateInfo.PSODesc.ResourceLayout.Variables    = Variables.data();
 
-    std::vector<CompiledShader*> traces;
-    EShaderDebugMode             Mode          = EShaderDebugMode(1);
-    bool                         Changed       = false;
-    const auto                   ReplaceShader = [this, &traces, &Changed, &Mode](IShader*& pShader) //
+    std::vector<ShaderInfo> traces;
+    EShaderDebugMode        Mode          = EShaderDebugMode(1);
+    bool                    Changed       = false;
+    const auto              ReplaceShader = [this, &traces, &Changed, &Mode](IShader*& pShader) //
     {
         auto Iter = m_DbgShaders.find(static_cast<const void*>(pShader));
         if (Iter == m_DbgShaders.end())
@@ -538,8 +542,8 @@ bool ShaderDebugger::CreatePipeline(const GraphicsPipelineStateCreateInfo& PSOCr
         switch (Mode)
         {
             // clang-format off
-            case EShaderDebugMode::Trace:        pShader = Iter->second.DebugShader;        traces.push_back(Iter->second.pDebugInfo);   break;
-            case EShaderDebugMode::Profiling:    pShader = Iter->second.ProfileShader;      traces.push_back(Iter->second.pProfiltInfo); break;
+            case EShaderDebugMode::Trace:        pShader = Iter->second.DebugShader;        traces.emplace_back(Iter->second.Name.c_str(), Iter->second.pDebugInfo);   break;
+            case EShaderDebugMode::Profiling:    pShader = Iter->second.ProfileShader;      traces.emplace_back(Iter->second.Name.c_str(), Iter->second.pProfiltInfo); break;
             case EShaderDebugMode::ClockHeatmap: pShader = Iter->second.ClockHeatmapShader; break;
                 // clang-format on
         }
@@ -615,7 +619,7 @@ bool ShaderDebugger::CreatePipeline(const ComputePipelineStateCreateInfo& PSOCre
     CreateInfo.PSODesc.ResourceLayout.NumVariables = Uint32(Variables.size());
     CreateInfo.PSODesc.ResourceLayout.Variables    = Variables.data();
 
-    std::vector<CompiledShader*> traces;
+    std::vector<ShaderInfo> traces;
 
     for (EShaderDebugMode Mode = EShaderDebugMode(1); Mode <= EShaderDebugMode::Last; Mode = EShaderDebugMode(Uint32(Mode) << 1))
     {
@@ -631,8 +635,8 @@ bool ShaderDebugger::CreatePipeline(const ComputePipelineStateCreateInfo& PSOCre
         switch (Mode)
         {
             // clang-format off
-            case EShaderDebugMode::Trace:        CreateInfo.pCS = Iter->second.DebugShader;        traces.push_back(Iter->second.pDebugInfo);   break;
-            case EShaderDebugMode::Profiling:    CreateInfo.pCS = Iter->second.ProfileShader;      traces.push_back(Iter->second.pProfiltInfo); break;
+            case EShaderDebugMode::Trace:        CreateInfo.pCS = Iter->second.DebugShader;        traces.emplace_back(Iter->second.Name.c_str(), Iter->second.pDebugInfo);   break;
+            case EShaderDebugMode::Profiling:    CreateInfo.pCS = Iter->second.ProfileShader;      traces.emplace_back(Iter->second.Name.c_str(), Iter->second.pProfiltInfo); break;
             case EShaderDebugMode::ClockHeatmap: CreateInfo.pCS = Iter->second.ClockHeatmapShader; break;
                 // clang-format on
         }
@@ -680,10 +684,10 @@ bool ShaderDebugger::CreatePipeline(const RayTracingPipelineStateCreateInfo& PSO
     CreateInfo.PSODesc.ResourceLayout.NumVariables = Uint32(Variables.size());
     CreateInfo.PSODesc.ResourceLayout.Variables    = Variables.data();
 
-    std::vector<CompiledShader*> traces;
-    EShaderDebugMode             Mode          = EShaderDebugMode(1);
-    bool                         Changed       = false;
-    const auto                   ReplaceShader = [this, &traces, &Changed, &Mode](IShader*& pShader) //
+    std::vector<ShaderInfo> traces;
+    EShaderDebugMode        Mode          = EShaderDebugMode(1);
+    bool                    Changed       = false;
+    const auto              ReplaceShader = [this, &traces, &Changed, &Mode](IShader*& pShader) //
     {
         auto Iter = m_DbgShaders.find(static_cast<const void*>(pShader));
         if (Iter == m_DbgShaders.end())
@@ -695,8 +699,8 @@ bool ShaderDebugger::CreatePipeline(const RayTracingPipelineStateCreateInfo& PSO
         switch (Mode)
         {
             // clang-format off
-            case EShaderDebugMode::Trace:        pShader = Iter->second.DebugShader;        traces.push_back(Iter->second.pDebugInfo);   break;
-            case EShaderDebugMode::Profiling:    pShader = Iter->second.ProfileShader;      traces.push_back(Iter->second.pProfiltInfo); break;
+            case EShaderDebugMode::Trace:        pShader = Iter->second.DebugShader;        traces.emplace_back(Iter->second.Name.c_str(), Iter->second.pDebugInfo);   break;
+            case EShaderDebugMode::Profiling:    pShader = Iter->second.ProfileShader;      traces.emplace_back(Iter->second.Name.c_str(), Iter->second.pProfiltInfo); break;
             case EShaderDebugMode::ClockHeatmap: pShader = Iter->second.ClockHeatmapShader; break;
                 // clang-format on
         }
@@ -895,10 +899,10 @@ void ShaderDebugger::ParseDebugOutput(IDeviceContext* pContext, DebugMode& DbgMo
     if (pMapped)
     {
         std::vector<const char*> TempStrings;
-        for (auto* Trace : DbgMode.Traces)
+        for (auto& Info : DbgMode.Traces)
         {
             ShaderTraceResult* pResult = nullptr;
-            if (m_CompilerFn.ParseShaderTrace(Trace, pMapped, DbgMode.pStorageView->GetDesc().ByteWidth, &pResult))
+            if (m_CompilerFn.ParseShaderTrace(Info.Compiled, pMapped, DbgMode.pStorageView->GetDesc().ByteWidth, &pResult))
             {
                 Uint32 Count = 0;
                 m_CompilerFn.GetTraceResultCount(pResult, &Count);
@@ -909,7 +913,9 @@ void ShaderDebugger::ParseDebugOutput(IDeviceContext* pContext, DebugMode& DbgMo
                     m_CompilerFn.GetTraceResultString(pResult, i, &TempStrings[i]);
                 }
 
-                m_Callback(TempStrings);
+                if (TempStrings.size())
+                    m_Callback(Info.Name, TempStrings);
+
                 m_CompilerFn.ReleaseTraceResult(pResult);
             }
         }
@@ -1571,6 +1577,16 @@ void ShaderDebugger::CompileFromSource(IShader** ppShader, SHADER_TYPE Type, con
 
         ShaderDebugInfo DbgInfo;
         DbgInfo.Origin = *ppShader;
+        DbgInfo.Name   = pName;
+
+        // validate name
+        for (auto& c : DbgInfo.Name)
+        {
+            if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_')
+                continue;
+
+            c = '_';
+        }
 
         if (!!(Mode & EShaderDebugMode::Trace))
             if (CreateShader(Type, pSource, SourceLen, pName, EShaderDebugMode::Trace, pMacro, SPV_COMP_OPTIMIZATION_NONE, &DbgInfo.pDebugInfo, &DbgInfo.DebugShader))

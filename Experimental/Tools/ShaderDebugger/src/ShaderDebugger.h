@@ -9,6 +9,7 @@
 #include "RefCntAutoPtr.hpp"
 #include "BasicMath.hpp"
 #include "SpvCompiler.h"
+#include "Utils/Math.h"
 
 namespace DE
 {
@@ -83,7 +84,7 @@ public:
                                                        Uint32      DataSize = 0) = 0;
 };
 
-using ShaderDebugCallback_t = std::function<void(const std::vector<const char*>& output)>;
+using ShaderDebugCallback_t = std::function<void(const char* shaderName, const std::vector<const char*>& output)>;
 
 
 class ShaderDebugger
@@ -132,6 +133,7 @@ private:
     struct ShaderDebugInfo
     {
         EShaderDebugMode Mode = EShaderDebugMode::None;
+        String           Name;
 
         RefCntAutoPtr<IShader> Origin;
         RefCntAutoPtr<IShader> ClockHeatmapShader;
@@ -172,21 +174,30 @@ private:
         }
     };
 
+    struct ShaderInfo
+    {
+        const char*     Name     = nullptr;
+        CompiledShader* Compiled = nullptr;
+
+        ShaderInfo(const char* n, CompiledShader* c) :
+            Name{n}, Compiled{c} {}
+    };
+
     struct PipelineDebugInfo
     {
         RefCntAutoPtr<IPipelineState> DebugPipeline;
-        std::vector<CompiledShader*>  DebugTraces;
+        std::vector<ShaderInfo>       DebugTraces;
     };
 
     struct DebugMode
     {
-        std::vector<CompiledShader*> Traces;
-        EShaderDebugMode             Mode = EShaderDebugMode::None;
-        RefCntAutoPtr<IBuffer>       pStorage;
-        RefCntAutoPtr<IBufferView>   pStorageView;
-        RefCntAutoPtr<IBuffer>       pReadbackBuffer;
-        IPipelineState*              pPSO = nullptr;
-        uint2                        HeatmapDim;
+        std::vector<ShaderInfo>    Traces;
+        EShaderDebugMode           Mode = EShaderDebugMode::None;
+        RefCntAutoPtr<IBuffer>     pStorage;
+        RefCntAutoPtr<IBufferView> pStorageView;
+        RefCntAutoPtr<IBuffer>     pReadbackBuffer;
+        IPipelineState*            pPSO = nullptr;
+        uint2                      HeatmapDim;
     };
 
     struct DebugStorage

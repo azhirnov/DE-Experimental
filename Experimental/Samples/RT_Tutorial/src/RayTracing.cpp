@@ -68,6 +68,8 @@ void RayTracing::CreateGraphicsPSO()
 
 void RayTracing::CreateRayTracingPSO()
 {
+    using EDbgMode = DE::EShaderDebugMode;
+
     try
     {
         m_pRayTracingPSO = nullptr;
@@ -82,7 +84,7 @@ void RayTracing::CreateRayTracingPSO()
         Macros.AddShaderMacro("NUM_TEXTURES", NumTextures);
 
         RefCntAutoPtr<IShader> pRG;
-        m_ShaderDebugger.CompileFromFile(&pRG, SHADER_TYPE_RAY_GEN, "RayTrace.rgen", "Ray tracing RG", Macros, DE::EShaderDebugMode::ClockHeatmap);
+        m_ShaderDebugger.CompileFromFile(&pRG, SHADER_TYPE_RAY_GEN, "RayTrace.rgen", "Ray tracing RG", Macros, EDbgMode::ClockHeatmap);
         CHECK_THROW(pRG);
 
         RefCntAutoPtr<IShader> pPrimaryMiss, pShadowMiss;
@@ -91,10 +93,10 @@ void RayTracing::CreateRayTracingPSO()
         CHECK_THROW(pPrimaryMiss && pShadowMiss);
 
         RefCntAutoPtr<IShader> pCubePrimaryHit, pGroundHit, pGlassPrimaryHit, pSpherePrimaryHit;
-        m_ShaderDebugger.CompileFromFile(&pCubePrimaryHit, SHADER_TYPE_RAY_CLOSEST_HIT, "CubePrimaryHit.rchit", "Cube primary ray closest hit shader", Macros);
-        m_ShaderDebugger.CompileFromFile(&pGroundHit, SHADER_TYPE_RAY_CLOSEST_HIT, "Ground.rchit", "Ground primary ray closest hit shader", Macros);
-        m_ShaderDebugger.CompileFromFile(&pGlassPrimaryHit, SHADER_TYPE_RAY_CLOSEST_HIT, "GlassPrimaryHit.rchit", "Glass primary ray closest hit shader", Macros);
-        m_ShaderDebugger.CompileFromFile(&pSpherePrimaryHit, SHADER_TYPE_RAY_CLOSEST_HIT, "SpherePrimaryHit.rchit", "Sphere primary ray closest hit shader", Macros);
+        m_ShaderDebugger.CompileFromFile(&pCubePrimaryHit, SHADER_TYPE_RAY_CLOSEST_HIT, "CubePrimaryHit.rchit", "Cube primary ray closest hit shader", Macros, EDbgMode::Trace);
+        m_ShaderDebugger.CompileFromFile(&pGroundHit, SHADER_TYPE_RAY_CLOSEST_HIT, "Ground.rchit", "Ground primary ray closest hit shader", Macros, EDbgMode::Trace);
+        m_ShaderDebugger.CompileFromFile(&pGlassPrimaryHit, SHADER_TYPE_RAY_CLOSEST_HIT, "GlassPrimaryHit.rchit", "Glass primary ray closest hit shader", Macros, EDbgMode::Trace);
+        m_ShaderDebugger.CompileFromFile(&pSpherePrimaryHit, SHADER_TYPE_RAY_CLOSEST_HIT, "SpherePrimaryHit.rchit", "Sphere primary ray closest hit shader", Macros, EDbgMode::Trace);
         CHECK_THROW(pCubePrimaryHit && pGroundHit && pGlassPrimaryHit && pSpherePrimaryHit);
 
         RefCntAutoPtr<IShader> pSphereIntersection;
@@ -126,7 +128,7 @@ void RayTracing::CreateRayTracingPSO()
         PSOCreateInfo.pProceduralHitShaders    = ProceduralHitShaders;
         PSOCreateInfo.ProceduralHitShaderCount = _countof(ProceduralHitShaders);
 
-        PSOCreateInfo.RayTracingPipeline.MaxRecursionDepth = MaxRecursionDepth;
+        PSOCreateInfo.RayTracingPipeline.MaxRecursionDepth = static_cast<Uint8>(m_MaxRecursionDepth);
 
         SamplerDesc SamLinearWrapDesc{
             FILTER_TYPE_LINEAR, FILTER_TYPE_LINEAR, FILTER_TYPE_LINEAR,
@@ -603,6 +605,8 @@ void RayTracing::Initialize(const SampleInitInfo& InitInfo)
 {
     SampleBase::Initialize(InitInfo);
 
+    m_MaxRecursionDepth = std::min(m_MaxRecursionDepth, m_pDevice->GetDeviceProperties().MaxRayTracingRecursionDepth);
+
     m_ShaderDebugger.Initialize(m_pEngineFactory, m_pDevice);
     m_ShaderDebugger.InitDebugOutput(DEBUG_TRACE_PATH);
 
@@ -637,7 +641,7 @@ void RayTracing::Initialize(const SampleInitInfo& InitInfo)
     {
         m_Constants.ClipPlanes   = float2{0.1f, 100.0f};
         m_Constants.ShadowPCF    = 1;
-        m_Constants.MaxRecursion = MaxRecursionDepth / 2;
+        m_Constants.MaxRecursion = m_MaxRecursionDepth / 2;
 
         // Sphere constants.
         m_Constants.SphereReflectionColorMask = {0.81f, 1.0f, 0.45f};
@@ -751,14 +755,14 @@ void RayTracing::Render()
         {
             m_ShaderDebugger.BeginClockHeatmap(m_pImmediateContext, pPSO, SHADER_TYPE_RAY_GEN, uint2{m_pColorRT->GetDesc().Width, m_pColorRT->GetDesc().Height});
         }
-        /*else if (m_DebugShader)
+        else if (m_DebugShader)
         {
-            m_ShaderDebugger.BeginRayTraceDebugger(m_pImmediateContext, pPSO, SHADER_TYPE_RAY_GEN, uint3(m_DebugCoord.x, m_DebugCoord.y, 0));
+            m_ShaderDebugger.BeginRayTraceDebugger(m_pImmediateContext, pPSO, SHADER_TYPE_RAY_CLOSEST_HIT, uint3(m_DebugCoord.x, m_DebugCoord.y, 0));
         }
         else if (m_ProfileShader)
         {
-            m_ShaderDebugger.BeginRayTraceProfiler(m_pImmediateContext, pPSO, SHADER_TYPE_RAY_GEN, uint3(m_DebugCoord.x, m_DebugCoord.y, 0));
-        }*/
+            m_ShaderDebugger.BeginRayTraceProfiler(m_pImmediateContext, pPSO, SHADER_TYPE_RAY_CLOSEST_HIT, uint3(m_DebugCoord.x, m_DebugCoord.y, 0));
+        }
 
         m_pImmediateContext->SetPipelineState(pPSO);
         m_ShaderDebugger.BindSRB(m_pImmediateContext, pPSO, m_pRayTracingSRB, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -833,10 +837,12 @@ void RayTracing::Update(double CurrTime, double ElapsedTime)
     if (GetInputController().GetKeyState(InputKeys::ZoomOut) & INPUT_KEY_STATE_FLAG_KEY_WAS_DOWN)
         m_ProfileShader = true;
 
-    auto& mstate   = GetInputController().GetMouseState();
-    m_DebugCoord.x = Uint32(mstate.PosX);
-    m_DebugCoord.y = Uint32(mstate.PosY);
-
+    if (m_pSwapChain)
+    {
+        auto& mstate   = GetInputController().GetMouseState();
+        m_DebugCoord.x = Uint32(mstate.PosX);
+        m_DebugCoord.y = m_pSwapChain->GetDesc().Height - 1 - Uint32(mstate.PosY);
+    }
     GetInputController().ClearState();
 }
 
@@ -877,8 +883,12 @@ void RayTracing::UpdateUI()
     if (ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
     {
         ImGui::Text("Use WASD to move camera");
+        ImGui::Text("Shift - on/off shader clock heatmap");
+        ImGui::Text("'Num +' - record shader trace for selected pixel");
+        //ImGui::Text("'Num -' - record shader profiling info for selected pixel");
+        ImGui::Text("Control - reload ray tracing shaders");
         ImGui::SliderInt("Shadow blur", &m_Constants.ShadowPCF, 0, 16);
-        ImGui::SliderInt("Max recursion", &m_Constants.MaxRecursion, 0, MaxRecursionDepth);
+        ImGui::SliderInt("Max recursion", &m_Constants.MaxRecursion, 0, m_MaxRecursionDepth);
 
         for (int i = 0; i < NumCubes; ++i)
         {

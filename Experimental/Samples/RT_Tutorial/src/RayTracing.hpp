@@ -36,9 +36,8 @@ private:
     void UpdateUI();
     void BindResources();
 
-    static constexpr int NumTextures       = 4;
-    static constexpr int MaxRecursionDepth = 8;
-    static constexpr int NumCubes          = 4;
+    static constexpr int NumTextures = 4;
+    static constexpr int NumCubes    = 4;
 
     RefCntAutoPtr<IBuffer>  m_CubeAttribsCB;
     RefCntAutoPtr<IBuffer>  m_BoxAttribsCB;
@@ -59,6 +58,7 @@ private:
     RefCntAutoPtr<IBuffer>        m_ScratchBuffer;
     RefCntAutoPtr<DE::ISharedSBT> m_pSBT;
 
+    Uint32            m_MaxRecursionDepth     = 8;
     const double      m_MaxAnimationTimeDelta = 1.0 / 60.0;
     float             m_AnimationTime         = 0.0f;
     Constants         m_Constants             = {};
