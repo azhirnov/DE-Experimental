@@ -18,11 +18,12 @@ layout(location=SHADOW_RAY_INDEX)  rayPayloadInEXT ShadowRayPayload   shadowPayl
 
 
 #if defined(CAST_PRIMARY_RAY) || defined(CAST_SECONDARY_RAY)
-PrimaryRayPayload CastPrimaryRay(RayDesc ray, uint Recursion)
+PrimaryRayPayload CastPrimaryRay(RayDesc ray, uint Recursion/* = 0*/, int WaveLengthIndex/* = -1*/)
 {
-    primaryPayload.Color     = float3(0, 0, 0);
-    primaryPayload.Depth     = 0.0;
-    primaryPayload.Recursion = Recursion;
+    primaryPayload.Color            = float3(0, 0, 0);
+    primaryPayload.Depth            = 0.0;
+    primaryPayload.Recursion        = Recursion;
+    primaryPayload.WaveLengthIndex  = WaveLengthIndex;
 
     if (Recursion > g_ConstantsCB.MaxRecursion)
     {

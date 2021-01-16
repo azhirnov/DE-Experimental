@@ -14,6 +14,7 @@
 #include "DeviceContext.h"
 #include "GLTFLoader.hpp"
 #include "FirstPersonCamera.hpp"
+#include "ShaderDebugger.h"
 
 namespace Diligent
 {
@@ -106,6 +107,8 @@ private:
     TimePoint           m_LastUpdateTime;
     FirstPersonCamera   m_Camera;
     InputControllerGLFW m_InputController;
+    
+    DE::ShaderDebugger m_ShaderDebugger;
 };
 
 } // namespace Diligent

@@ -4,17 +4,17 @@
 
 #define CAST_PRIMARY_RAY
 #define CAST_SHADOW_RAY
-#include "structures.fxh"
-#include "RayUtils.fxh"
+#include "structures.h"
+#include "RayUtils.h"
 
 uniform writeonly image2D  g_ColorBuffer;
 
 void main()
 {
-    float3  rayOrigin = g_ConstantsCB.Position.xyz;
+    float3  rayOrigin = g_ConstantsCB.CameraPos.xyz;
     float2  uv        = float2(gl_LaunchIDEXT.xy) / float2(gl_LaunchSizeEXT.xy - 1);
-    float3  rayDir    = normalize(mix(mix(g_ConstantsCB.FrustumRayLB, g_ConstantsCB.FrustumRayRB, uv.x),
-                                      mix(g_ConstantsCB.FrustumRayLT, g_ConstantsCB.FrustumRayRT, uv.x), uv.y)).xyz;
+    float3  rayDir    = normalize(mix(mix(g_ConstantsCB.FrustumRayLB.xyz, g_ConstantsCB.FrustumRayRB.xyz, uv.x),
+                                      mix(g_ConstantsCB.FrustumRayLT.xyz, g_ConstantsCB.FrustumRayRT.xyz, uv.x), uv.y));
 
     RayDesc ray;
     ray.Origin    = rayOrigin;
@@ -22,6 +22,6 @@ void main()
     ray.TMin      = g_ConstantsCB.ClipPlanes.x;
     ray.TMax      = g_ConstantsCB.ClipPlanes.y;
 
-    PrimaryRayPayload payload = CastPrimaryRay(ray, /*recursion*/0);
+    PrimaryRayPayload payload = CastPrimaryRay(ray, /*recursion*/0, /*wavelength index*/-1);
     imageStore(g_ColorBuffer, ivec2(gl_LaunchIDEXT), float4(payload.Color, 1.0));
 }

@@ -12,6 +12,9 @@
 #    define float4x4 mat4x4
 #endif
 
+#define MAX_OMNI_lIGHTS 8
+
+
 struct PrimaryPayload
 {
     float3  Color;
@@ -33,7 +36,7 @@ struct OmniLight
 struct LightAttribs
 {
     uint4      OmniLightCount;
-    OmniLight  OmniLights[8];
+    OmniLight  OmniLights [MAX_OMNI_lIGHTS];
 };
 
 struct CameraAttribs
@@ -61,8 +64,7 @@ struct MaterialAttribs
 
 struct PrimitiveAttribs
 {
-    uint3  Face;
-    uint   MaterialID;
+    uint   ObjectIDAndMaterialID;   // objectID : 16, materialID : 16
 };
 
 struct VertexAttribs
@@ -78,4 +80,3 @@ struct BoxAttribs
     float4 min;
     float4 max;
 };
-

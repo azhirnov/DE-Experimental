@@ -171,17 +171,17 @@ public:
         }
     }
 
-    void DILIGENT_CALL_TYPE BindHitGroup(ITopLevelAS* pTLAS,
-                                         const char*  pInstanceName,
-                                         const char*  pGeometryName,
-                                         Uint32       RayOffsetInHitGroupIndex,
-                                         const char*  pShaderGroupName,
-                                         const void*  pData,
-                                         Uint32       DataSize) override
+    void DILIGENT_CALL_TYPE BindHitGroupForGeometry(ITopLevelAS* pTLAS,
+                                                    const char*  pInstanceName,
+                                                    const char*  pGeometryName,
+                                                    Uint32       RayOffsetInHitGroupIndex,
+                                                    const char*  pShaderGroupName,
+                                                    const void*  pData,
+                                                    Uint32       DataSize) override
     {
         for (auto& SBT : m_SBTs)
         {
-            SBT.second->BindHitGroup(pTLAS, pInstanceName, pGeometryName, RayOffsetInHitGroupIndex, pShaderGroupName, pData, DataSize);
+            SBT.second->BindHitGroupForGeometry(pTLAS, pInstanceName, pGeometryName, RayOffsetInHitGroupIndex, pShaderGroupName, pData, DataSize);
         }
     }
 
@@ -196,28 +196,28 @@ public:
         }
     }
 
-    void DILIGENT_CALL_TYPE BindHitGroups(ITopLevelAS* pTLAS,
-                                          const char*  pInstanceName,
-                                          Uint32       RayOffsetInHitGroupIndex,
-                                          const char*  pShaderGroupName,
-                                          const void*  pData,
-                                          Uint32       DataSize) override
+    void DILIGENT_CALL_TYPE BindHitGroupForInstance(ITopLevelAS* pTLAS,
+                                                    const char*  pInstanceName,
+                                                    Uint32       RayOffsetInHitGroupIndex,
+                                                    const char*  pShaderGroupName,
+                                                    const void*  pData,
+                                                    Uint32       DataSize) override
     {
         for (auto& SBT : m_SBTs)
         {
-            SBT.second->BindHitGroups(pTLAS, pInstanceName, RayOffsetInHitGroupIndex, pShaderGroupName, pData, DataSize);
+            SBT.second->BindHitGroupForInstance(pTLAS, pInstanceName, RayOffsetInHitGroupIndex, pShaderGroupName, pData, DataSize);
         }
     }
 
-    void DILIGENT_CALL_TYPE BindHitGroupForAll(ITopLevelAS* pTLAS,
-                                               Uint32       RayOffsetInHitGroupIndex,
-                                               const char*  pShaderGroupName,
-                                               const void*  pData,
-                                               Uint32       DataSize) override
+    void DILIGENT_CALL_TYPE BindHitGroupForTLAS(ITopLevelAS* pTLAS,
+                                                Uint32       RayOffsetInHitGroupIndex,
+                                                const char*  pShaderGroupName,
+                                                const void*  pData,
+                                                Uint32       DataSize) override
     {
         for (auto& SBT : m_SBTs)
         {
-            SBT.second->BindHitGroupForAll(pTLAS, RayOffsetInHitGroupIndex, pShaderGroupName, pData, DataSize);
+            SBT.second->BindHitGroupForTLAS(pTLAS, RayOffsetInHitGroupIndex, pShaderGroupName, pData, DataSize);
         }
     }
 
@@ -877,19 +877,26 @@ void ShaderDebugger::ReadTrace(IDeviceContext* pContext) noexcept
 
     pContext->WaitForFence(m_pFence, m_FenceValue, true);
 
+    Uint32 numOutputs = 0;
+
     if (m_Callback)
     {
         for (auto& DbgMode : m_DbgModes)
         {
-            ParseDebugOutput(pContext, DbgMode);
+            ParseDebugOutput(pContext, DbgMode, numOutputs);
         }
     }
 
     m_DbgModes.clear();
     m_StorageBuffers.clear();
+
+    ++m_FrameIdx;
+
+    if (numOutputs > 0)
+        ::OutputDebugStringA("=========================================================\n");
 }
 
-void ShaderDebugger::ParseDebugOutput(IDeviceContext* pContext, DebugMode& DbgMode) const
+void ShaderDebugger::ParseDebugOutput(IDeviceContext* pContext, DebugMode& DbgMode, Uint32& NumOutputs) const
 {
     if (DbgMode.Traces.empty() || DbgMode.pReadbackBuffer == nullptr)
         return;
@@ -914,9 +921,10 @@ void ShaderDebugger::ParseDebugOutput(IDeviceContext* pContext, DebugMode& DbgMo
                 }
 
                 if (TempStrings.size())
-                    m_Callback(Info.Name, TempStrings);
+                    m_Callback((String{"f"} + std::to_string(m_FrameIdx) + "_" + Info.Name).c_str(), TempStrings);
 
                 m_CompilerFn.ReleaseTraceResult(pResult);
+                NumOutputs += Uint32(TempStrings.size());
             }
         }
     }
@@ -1009,6 +1017,11 @@ void ShaderDebugger::DefaultShaderDebugCallback(const char* Name, const std::vec
         return FileSystem::PathExists(path);
     };
 
+    if (Output.size() > 3)
+    {
+        ::OutputDebugStringA("------------------\n");
+    }
+
     for (auto& Str : Output)
     {
         Uint32       MinIndex = 0;
@@ -1038,6 +1051,7 @@ void ShaderDebugger::DefaultShaderDebugCallback(const char* Name, const std::vec
             File.Write(Str, strlen(Str));
 
             ::OutputDebugStringA((fname + "(1): trace saved\n").c_str());
+            break;
         }
     }
 }

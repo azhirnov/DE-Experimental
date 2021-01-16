@@ -34,14 +34,6 @@ void RayTracing::CreateGraphicsPSO()
     PSOCreateInfo.GraphicsPipeline.RasterizerDesc.CullMode      = CULL_MODE_NONE;
     PSOCreateInfo.GraphicsPipeline.DepthStencilDesc.DepthEnable = False;
 
-    ShaderCreateInfo ShaderCI;
-    ShaderCI.UseCombinedTextureSamplers = true;
-    ShaderCI.SourceLanguage             = SHADER_SOURCE_LANGUAGE_GLSL_VERBATIM;
-
-    RefCntAutoPtr<IShaderSourceInputStreamFactory> pShaderSourceFactory;
-    m_pEngineFactory->CreateDefaultShaderSourceStreamFactory(nullptr, &pShaderSourceFactory);
-    ShaderCI.pShaderSourceStreamFactory = pShaderSourceFactory;
-
     RefCntAutoPtr<IShader> pVS, pPS;
     m_ShaderDebugger.CompileFromFile(&pVS, SHADER_TYPE_VERTEX, "ImageBlit.vsh", "Image blit VS");
     m_ShaderDebugger.CompileFromFile(&pPS, SHADER_TYPE_PIXEL, "ImageBlit.psh", "Image blit PS");
@@ -459,16 +451,26 @@ void RayTracing::UpdateTLAS()
 
     // Setup instances
     TLASBuildInstanceData Instances[NumInstances] = {};
-    const float3          InstanceBasePos[]       = {float3{1, 1, 1}, float3{2, 0, -1}, float3{-1, 1, 2}, float3{-2, 0, -1}};
-    const float           InstanceTimeOffset[]    = {0.0f, 0.53f, 1.27f, 4.16f};
-    static_assert(_countof(InstanceBasePos) == NumCubes, "mismatch");
-    static_assert(_countof(InstanceTimeOffset) == NumCubes, "mismatch");
 
-    const auto AnimateTransform = [&](TLASBuildInstanceData& Dst) //
+    struct CubeInstanceData
     {
-        float  t     = sin(m_AnimationTime * PI_F * 0.5f) + InstanceTimeOffset[Dst.CustomId];
-        float3 Pos   = InstanceBasePos[Dst.CustomId] * 2.0f + float3(sin(t * 1.13f), sin(t * 0.77f), sin(t * 2.15f)) * 0.5f;
-        float  angle = 0.1f * PI_F * (m_AnimationTime + InstanceTimeOffset[Dst.CustomId] * 2.0f);
+        float3 BasePos;
+        float  TimeOffset;
+    } CubeInstData[] = // clang-format off
+    {
+            {float3{ 1, 1,  1}, 0.00f},
+            {float3{ 2, 0, -1}, 0.53f},
+            {float3{-1, 1,  2}, 1.27f},
+            {float3{-2, 0, -1}, 4.16f}
+    };
+    // clang-format on
+    static_assert(_countof(CubeInstData) == NumCubes, "Cube instance data array size mismatch");
+
+    const auto AnimateOpaqueCube = [&](TLASBuildInstanceData& Dst) //
+    {
+        float  t     = sin(m_AnimationTime * PI_F * 0.5f) + CubeInstData[Dst.CustomId].TimeOffset;
+        float3 Pos   = CubeInstData[Dst.CustomId].BasePos * 2.0f + float3(sin(t * 1.13f), sin(t * 0.77f), sin(t * 2.15f)) * 0.5f;
+        float  angle = 0.1f * PI_F * (m_AnimationTime + CubeInstData[Dst.CustomId].TimeOffset * 2.0f);
 
         if (!m_EnableCubes[Dst.CustomId])
             Dst.Mask = 0;
@@ -481,25 +483,25 @@ void RayTracing::UpdateTLAS()
     Instances[0].CustomId     = 0; // texture index
     Instances[0].pBLAS        = m_pCubeBLAS;
     Instances[0].Mask         = OPAQUE_GEOM_MASK;
-    AnimateTransform(Instances[0]);
+    AnimateOpaqueCube(Instances[0]);
 
     Instances[1].InstanceName = "Cube Instance 2";
     Instances[1].CustomId     = 1; // texture index
     Instances[1].pBLAS        = m_pCubeBLAS;
     Instances[1].Mask         = OPAQUE_GEOM_MASK;
-    AnimateTransform(Instances[1]);
+    AnimateOpaqueCube(Instances[1]);
 
     Instances[2].InstanceName = "Cube Instance 3";
     Instances[2].CustomId     = 2; // texture index
     Instances[2].pBLAS        = m_pCubeBLAS;
     Instances[2].Mask         = OPAQUE_GEOM_MASK;
-    AnimateTransform(Instances[2]);
+    AnimateOpaqueCube(Instances[2]);
 
     Instances[3].InstanceName = "Cube Instance 4";
     Instances[3].CustomId     = 3; // texture index
     Instances[3].pBLAS        = m_pCubeBLAS;
     Instances[3].Mask         = OPAQUE_GEOM_MASK;
-    AnimateTransform(Instances[3]);
+    AnimateOpaqueCube(Instances[3]);
 
     Instances[4].InstanceName = "Ground Instance";
     Instances[4].pBLAS        = m_pCubeBLAS;
@@ -516,7 +518,8 @@ void RayTracing::UpdateTLAS()
     Instances[6].InstanceName = "Glass Instance";
     Instances[6].pBLAS        = m_pCubeBLAS;
     Instances[6].Mask         = TRANSPARENT_GEOM_MASK;
-    Instances[6].Transform.SetTranslation(4.0f, 4.5f, -7.0f);
+    Instances[6].Transform.SetRotation((float3x3::Scale(1.5f, 1.5f, 1.5f) * float3x3::RotationY(m_AnimationTime * PI_F * 0.25f)).Data());
+    Instances[6].Transform.SetTranslation(3.0f, 4.0f, -5.0f);
 
     // Build or update TLAS
     BuildTLASAttribs Attribs;
@@ -557,16 +560,16 @@ void RayTracing::CreateSBT()
             m_pSBT->BindMissShader("PrimaryMiss", PRIMARY_RAY_INDEX);
             m_pSBT->BindMissShader("ShadowMiss",  SHADOW_RAY_INDEX );
 
-            m_pSBT->BindHitGroups(m_pTLAS, "Cube Instance 1",  PRIMARY_RAY_INDEX, "CubePrimaryHit"  );
-            m_pSBT->BindHitGroups(m_pTLAS, "Cube Instance 2",  PRIMARY_RAY_INDEX, "CubePrimaryHit"  );
-            m_pSBT->BindHitGroups(m_pTLAS, "Cube Instance 3",  PRIMARY_RAY_INDEX, "CubePrimaryHit"  );
-            m_pSBT->BindHitGroups(m_pTLAS, "Cube Instance 4",  PRIMARY_RAY_INDEX, "CubePrimaryHit"  );
-            m_pSBT->BindHitGroups(m_pTLAS, "Ground Instance",  PRIMARY_RAY_INDEX, "GroundHit"       );
-            m_pSBT->BindHitGroups(m_pTLAS, "Glass Instance",   PRIMARY_RAY_INDEX, "GlassPrimaryHit" );
-            m_pSBT->BindHitGroups(m_pTLAS, "Sphere Instance",  PRIMARY_RAY_INDEX, "SpherePrimaryHit");
+            m_pSBT->BindHitGroupForInstance(m_pTLAS, "Cube Instance 1",  PRIMARY_RAY_INDEX, "CubePrimaryHit"  );
+            m_pSBT->BindHitGroupForInstance(m_pTLAS, "Cube Instance 2",  PRIMARY_RAY_INDEX, "CubePrimaryHit"  );
+            m_pSBT->BindHitGroupForInstance(m_pTLAS, "Cube Instance 3",  PRIMARY_RAY_INDEX, "CubePrimaryHit"  );
+            m_pSBT->BindHitGroupForInstance(m_pTLAS, "Cube Instance 4",  PRIMARY_RAY_INDEX, "CubePrimaryHit"  );
+            m_pSBT->BindHitGroupForInstance(m_pTLAS, "Ground Instance",  PRIMARY_RAY_INDEX, "GroundHit"       );
+            m_pSBT->BindHitGroupForInstance(m_pTLAS, "Glass Instance",   PRIMARY_RAY_INDEX, "GlassPrimaryHit" );
+            m_pSBT->BindHitGroupForInstance(m_pTLAS, "Sphere Instance",  PRIMARY_RAY_INDEX, "SpherePrimaryHit");
 
-            m_pSBT->BindHitGroupForAll(m_pTLAS, SHADOW_RAY_INDEX, "");
-            m_pSBT->BindHitGroups(m_pTLAS, "Sphere Instance",  SHADOW_RAY_INDEX,  "SphereShadowHit");
+            m_pSBT->BindHitGroupForTLAS(m_pTLAS, SHADOW_RAY_INDEX, "");
+            m_pSBT->BindHitGroupForInstance(m_pTLAS, "Sphere Instance",  SHADOW_RAY_INDEX,  "SphereShadowHit");
             // clang-format on
         }
     }
@@ -601,6 +604,84 @@ void RayTracing::BindResources()
     }
 }
 
+static float3 WavelengthToRGB(float wl)
+{
+    VERIFY_EXPR(wl >= 400.0f && wl <= 700.0f);
+
+    // from https://stackoverflow.com/questions/3407942/rgb-values-of-visible-spectrum/22681410#22681410
+    float3 res{0.0f, 0.0f, 0.0f};
+
+    // red
+    if ((wl >= 400.0f) && (wl < 410.0f))
+    {
+        float t = (wl - 400.0f) / (410.0f - 400.0f);
+        res.r   = (0.33f * t) - (0.20f * t * t);
+    }
+    else if ((wl >= 410.0f) && (wl < 475.0f))
+    {
+        float t = (wl - 410.0f) / (475.0f - 410.0f);
+        res.r   = 0.14f - (0.13f * t * t);
+    }
+    else if ((wl >= 545.0f) && (wl < 595.0f))
+    {
+        float t = (wl - 545.0f) / (595.0f - 545.0f);
+        res.r   = (1.98f * t) - (t * t);
+    }
+    else if ((wl >= 595.0f) && (wl < 650.0f))
+    {
+        float t = (wl - 595.0f) / (650.0f - 595.0f);
+        res.r   = 0.98f + (0.06f * t) - (0.40f * t * t);
+    }
+    else if ((wl >= 650.0f) && (wl <= 700.0f))
+    {
+        float t = (wl - 650.0f) / (700.0f - 650.0f);
+        res.r   = 0.65f - (0.84f * t) + (0.20f * t * t);
+    }
+
+    // green
+    if ((wl >= 415.0f) && (wl < 475.0f))
+    {
+        float t = (wl - 415.0f) / (475.0f - 415.0f);
+        res.g   = (0.80f * t * t);
+    }
+    else if ((wl >= 475.0f) && (wl < 590.0f))
+    {
+        float t = (wl - 475.0f) / (590.0f - 475.0f);
+        res.g   = 0.8f + (0.76f * t) - (0.80f * t * t);
+    }
+    else if ((wl >= 585.0f) && (wl < 639.0f))
+    {
+        float t = (wl - 585.0f) / (639.0f - 585.0f);
+        res.g   = 0.84f - (0.84f * t);
+    }
+
+    // blue
+    if ((wl >= 400.0f) && (wl < 475.0f))
+    {
+        float t = (wl - 400.0f) / (475.0f - 400.0f);
+        res.b   = (2.20f * t) - (1.50f * t * t);
+    }
+    else if ((wl >= 475.0f) && (wl < 560.0f))
+    {
+        float t = (wl - 475.0f) / (560.0f - 475.0f);
+        res.b   = 0.7f - (t) + (0.30f * t * t);
+    }
+
+    return res;
+}
+
+static float WaveLengthToAbsoption(float wl)
+{
+    VERIFY_EXPR(wl >= 400.0f && wl <= 700.0f);
+
+    float f = (wl - 400.0f) / (700.0f - 400.0f);
+    f = (f - 0.65f) * 1.5f;
+    f *= f;
+    f += 0.3f;
+
+    return clamp(f, 0.0f, 1.0f);
+}
+
 void RayTracing::Initialize(const SampleInitInfo& InitInfo)
 {
     SampleBase::Initialize(InitInfo);
@@ -609,14 +690,6 @@ void RayTracing::Initialize(const SampleInitInfo& InitInfo)
 
     m_ShaderDebugger.Initialize(m_pEngineFactory, m_pDevice);
     m_ShaderDebugger.InitDebugOutput(DEBUG_TRACE_PATH);
-
-    CreateGraphicsPSO();
-    CreateRayTracingPSO();
-    LoadTextures();
-    CreateCubeBLAS();
-    CreateProceduralBLAS();
-    UpdateTLAS();
-    CreateSBT();
 
     // Create a buffer with shared constants.
     BufferDesc BuffDesc;
@@ -628,6 +701,13 @@ void RayTracing::Initialize(const SampleInitInfo& InitInfo)
     m_pDevice->CreateBuffer(BuffDesc, nullptr, &m_ConstantsCB);
     VERIFY_EXPR(m_ConstantsCB != nullptr);
 
+    CreateGraphicsPSO();
+    CreateRayTracingPSO();
+    LoadTextures();
+    CreateCubeBLAS();
+    CreateProceduralBLAS();
+    UpdateTLAS();
+    CreateSBT();
     BindResources();
 
     // Setup camera.
@@ -641,37 +721,29 @@ void RayTracing::Initialize(const SampleInitInfo& InitInfo)
     {
         m_Constants.ClipPlanes   = float2{0.1f, 100.0f};
         m_Constants.ShadowPCF    = 1;
-        m_Constants.MaxRecursion = m_MaxRecursionDepth / 2;
+        m_Constants.MaxRecursion = std::min(Uint32{6}, m_MaxRecursionDepth);
 
         // Sphere constants.
         m_Constants.SphereReflectionColorMask = {0.81f, 1.0f, 0.45f};
         m_Constants.SphereReflectionBlur      = 1;
 
         // Glass cube constants.
-        m_Constants.GlassReflectionColorMask = {0.25f, 0.02f, 0.50f};
-        m_Constants.GlassOpticalDepth        = 0.5f;
-        m_Constants.GlassMaterialColor       = {0.71f, 0.42f, 0.13f};
-        m_Constants.GlassIndexOfRefraction   = {1.01f, 1.02f};
-        m_Constants.GlassEnableInterference  = 0;
+        m_Constants.GlassReflectionColorMask = {0.22f, 0.83f, 0.93f};
+        m_Constants.GlassAbsorptionScale     = 0.5f;
+        m_Constants.GlassIndexOfRefraction   = {1.5f, 1.02f};
+        m_Constants.GlassEnableDispersion    = 0;
 
         // Wavelength to RGB and index of refraction interpolation factor.
-        m_Constants.InterferenceSamples[0]  = {0.140000f, 0.000000f, 0.266667f, 0.53f};
-        m_Constants.InterferenceSamples[1]  = {0.130031f, 0.037556f, 0.612267f, 0.25f};
-        m_Constants.InterferenceSamples[2]  = {0.100123f, 0.213556f, 0.785067f, 0.16f};
-        m_Constants.InterferenceSamples[3]  = {0.050277f, 0.533556f, 0.785067f, 0.00f};
-        m_Constants.InterferenceSamples[4]  = {0.000000f, 0.843297f, 0.619682f, 0.13f};
-        m_Constants.InterferenceSamples[5]  = {0.000000f, 0.927410f, 0.431834f, 0.38f};
-        m_Constants.InterferenceSamples[6]  = {0.000000f, 0.972325f, 0.270893f, 0.27f};
-        m_Constants.InterferenceSamples[7]  = {0.000000f, 0.978042f, 0.136858f, 0.19f};
-        m_Constants.InterferenceSamples[8]  = {0.324000f, 0.944560f, 0.029730f, 0.47f};
-        m_Constants.InterferenceSamples[9]  = {0.777600f, 0.871879f, 0.000000f, 0.64f};
-        m_Constants.InterferenceSamples[10] = {0.972000f, 0.762222f, 0.000000f, 0.77f};
-        m_Constants.InterferenceSamples[11] = {0.971835f, 0.482222f, 0.000000f, 0.62f};
-        m_Constants.InterferenceSamples[12] = {0.886744f, 0.202222f, 0.000000f, 0.73f};
-        m_Constants.InterferenceSamples[13] = {0.715967f, 0.000000f, 0.000000f, 0.68f};
-        m_Constants.InterferenceSamples[14] = {0.459920f, 0.000000f, 0.000000f, 0.91f};
-        m_Constants.InterferenceSamples[15] = {0.218000f, 0.000000f, 0.000000f, 0.99f};
-        m_Constants.InterferenceSampleCount = 4;
+        for (Uint32 i = 0; i < MAX_DISPERS_SAMPLES; ++i)
+        {
+            float f  = float(i) / MAX_DISPERS_SAMPLES;
+            float wl = 401.0f + f * (699.0f - 401.0f);
+
+            m_Constants.DispersionSamples[i] = float4(WavelengthToRGB(wl), f);
+            m_Constants.Absorption[i/4][i%4] = WaveLengthToAbsoption(wl);
+        }
+
+        m_Constants.DispersionSampleCount = 8;
 
         m_Constants.AmbientColor  = float4(1.f, 1.f, 1.f, 0.f) * 0.015f;
         m_Constants.LightPos[0]   = {8.00f, -8.0f, +0.00f, 0.f};
@@ -740,7 +812,7 @@ void RayTracing::Render()
         GetPlaneIntersection(ViewFrustum::RIGHT_PLANE_IDX,  ViewFrustum::BOTTOM_PLANE_IDX, m_Constants.FrustumRayRB);
         GetPlaneIntersection(ViewFrustum::TOP_PLANE_IDX,    ViewFrustum::RIGHT_PLANE_IDX,  m_Constants.FrustumRayRT);
         // clang-format on
-        m_Constants.Position = -float4{CameraWorldPos, 1.0f};
+        m_Constants.CameraPos = -float4{CameraWorldPos, 1.0f};
 
         m_pImmediateContext->UpdateBuffer(m_ConstantsCB, 0, sizeof(m_Constants), &m_Constants, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
     }
@@ -768,9 +840,8 @@ void RayTracing::Render()
         m_ShaderDebugger.BindSRB(m_pImmediateContext, pPSO, m_pRayTracingSRB, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
         TraceRaysAttribs Attribs;
-        Attribs.DimensionX        = m_pColorRT->GetDesc().Width;
-        Attribs.DimensionY        = m_pColorRT->GetDesc().Height;
-        Attribs.SBTTransitionMode = RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
+        Attribs.DimensionX = m_pColorRT->GetDesc().Width;
+        Attribs.DimensionY = m_pColorRT->GetDesc().Height;
 
         m_ShaderDebugger.GetSBT(pPSO, m_pSBT, Attribs.pSBT);
 
@@ -806,7 +877,10 @@ void RayTracing::Update(double CurrTime, double ElapsedTime)
     SampleBase::Update(CurrTime, ElapsedTime);
     UpdateUI();
 
-    m_AnimationTime += static_cast<float>(std::min(m_MaxAnimationTimeDelta, ElapsedTime));
+    if (m_Animate)
+    {
+        m_AnimationTime += static_cast<float>(std::min(m_MaxAnimationTimeDelta, ElapsedTime));
+    }
 
     m_Camera.Update(m_InputController, static_cast<float>(ElapsedTime));
 
@@ -877,11 +951,14 @@ void RayTracing::WindowResize(Uint32 Width, Uint32 Height)
 
 void RayTracing::UpdateUI()
 {
-    const float MaxIndexOfRefraction = 1.2f;
+    const float MaxIndexOfRefraction = 2.0f;
+    const float MaxDispersion        = 0.5f;
 
     ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
     {
+        ImGui::Checkbox("Animate", &m_Animate);
+
         ImGui::Text("Use WASD to move camera");
         ImGui::Text("Shift - on/off shader clock heatmap");
         ImGui::Text("'Num +' - record shader trace for selected pixel");
@@ -899,26 +976,18 @@ void RayTracing::UpdateUI()
 
         ImGui::Separator();
         ImGui::Text("Glass cube");
-        ImGui::Checkbox("Interference", &m_Constants.GlassEnableInterference);
-        if (m_Constants.GlassEnableInterference)
-        {
-            ImGui::SliderFloat("Index or refraction min", &m_Constants.GlassIndexOfRefraction.x, 1.0f, MaxIndexOfRefraction);
 
-            m_Constants.GlassIndexOfRefraction.y = std::max(m_Constants.GlassIndexOfRefraction.x, m_Constants.GlassIndexOfRefraction.y);
-            ImGui::SliderFloat("Index or refraction max", &m_Constants.GlassIndexOfRefraction.y, 1.0f, MaxIndexOfRefraction);
+        ImGui::SliderFloat("Index of refraction", &m_Constants.GlassIndexOfRefraction.x, 1.0f, MaxIndexOfRefraction);
 
-            int rsamples = PlatformMisc::GetLSB(m_Constants.InterferenceSampleCount);
-            ImGui::SliderInt("Refraction samples", &rsamples, 1, PlatformMisc::GetLSB(Uint32{MAX_INTERF_SAMPLES}), std::to_string(1 << rsamples).c_str());
-            m_Constants.InterferenceSampleCount = 1u << rsamples;
-        }
-        else
-        {
-            ImGui::SliderFloat("Index or refraction", &m_Constants.GlassIndexOfRefraction.x, 1.0f, MaxIndexOfRefraction);
-            m_Constants.GlassIndexOfRefraction.y = m_Constants.GlassIndexOfRefraction.x + 0.02f;
-        }
+        ImGui::SliderFloat("Dispersion factor", &m_DispersionFactor, 0.0f, MaxDispersion);
+        m_Constants.GlassIndexOfRefraction.y = m_Constants.GlassIndexOfRefraction.x + m_DispersionFactor;
+
+        int rsamples = PlatformMisc::GetLSB(m_Constants.DispersionSampleCount);
+        ImGui::SliderInt("Dispersion samples", &rsamples, 1, PlatformMisc::GetLSB(Uint32{MAX_DISPERS_SAMPLES}), std::to_string(1 << rsamples).c_str());
+        m_Constants.DispersionSampleCount = 1u << rsamples;
+
         ImGui::ColorEdit3("Reflection color", m_Constants.GlassReflectionColorMask.Data(), ImGuiColorEditFlags_NoAlpha);
-        ImGui::ColorEdit3("Material color", m_Constants.GlassMaterialColor.Data(), ImGuiColorEditFlags_NoAlpha);
-        ImGui::SliderFloat("Optical depth", &m_Constants.GlassOpticalDepth, 0.0f, 2.0f);
+        ImGui::SliderFloat("Absorption", &m_Constants.GlassAbsorptionScale, 0.0f, 2.0f);
 
         ImGui::Separator();
         ImGui::Text("Sphere");

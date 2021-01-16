@@ -14,10 +14,10 @@ namespace Diligent
 {
 namespace
 {
-#include "../assets/structures.fxh"
+#include "../assets/structures.h"
 static_assert(sizeof(CameraAttribs) % 16 == 0, "must be aligned by 16 bytes");
 static_assert(sizeof(MaterialAttribs) % 16 == 0, "must be aligned by 16 bytes");
-static_assert(sizeof(PrimitiveAttribs) % 16 == 0, "must be aligned by 16 bytes");
+static_assert(sizeof(PrimitiveAttribs) % 4 == 0, "must be aligned by 16 bytes");
 static_assert(sizeof(PrimitiveAttribs) == sizeof(GLTF::Model::TriangleAttribs), "size mismatch");
 static_assert(sizeof(VertexAttribs) % 4 == 0, "must be aligned by 4 bytes");
 static_assert(sizeof(BoxAttribs) % 16 == 0, "must be aligned by 16 bytes");
@@ -31,14 +31,19 @@ void BindAllVariables(IShaderResourceBinding* pSRB, SHADER_TYPE Stages, const ch
 {
     VERIFY_EXPR(pObject != nullptr);
 
+    Uint32 count = 0;
     for (Uint32 s = 1; s <= Stages; s <<= 1)
     {
         if (Stages & s)
         {
             if (auto* pVar = pSRB->GetVariableByName(SHADER_TYPE(s), pName))
+            {
                 pVar->Set(pObject);
+                ++count;
+            }
         }
     }
+    VERIFY_EXPR(count > 0);
 }
 
 void BindAllVariables(IShaderResourceBinding* pSRB, SHADER_TYPE Stages, const char* pName, IDeviceObject* const* ppObjects, Uint32 FirstElement, Uint32 NumElements)
@@ -47,15 +52,20 @@ void BindAllVariables(IShaderResourceBinding* pSRB, SHADER_TYPE Stages, const ch
     {
         VERIFY_EXPR(ppObjects[i] != nullptr);
     }
-
+    
+    Uint32 count = 0;
     for (Uint32 s = 1; s <= Stages; s <<= 1)
     {
         if (Stages & s)
         {
             if (auto* pVar = pSRB->GetVariableByName(SHADER_TYPE(s), pName))
+            {
                 pVar->SetArray(ppObjects, FirstElement, NumElements);
+                ++count;
+            }
         }
     }
+    VERIFY_EXPR(count > 0);
 }
 
 } // namespace
@@ -75,7 +85,8 @@ void RT_Scene::InputControllerGLFW::SetKeyState(InputKeys Key, INPUT_KEY_STATE_F
 }
 
 
-RT_Scene::RT_Scene()
+RT_Scene::RT_Scene() :
+    m_ShaderDebugger{SHADER_TRACE_DLL}
 {
 }
 
@@ -157,6 +168,9 @@ bool RT_Scene::Create(uint2 wndSize) noexcept
         }
     }
 
+    m_ShaderDebugger.Initialize(m_pEngineFactory, m_pDevice);
+    m_ShaderDebugger.InitDebugOutput(DEBUG_TRACE_PATH);
+
     m_Camera.SetPos(float3(27, 10, -2.f));
     m_Camera.SetRotation(PI_F / 2.f, 0);
     m_Camera.SetRotationSpeed(0.005f);
@@ -167,7 +181,6 @@ bool RT_Scene::Create(uint2 wndSize) noexcept
 
     LoadScene("sponza/Sponza.gltf");
     CreateBLAS();
-    //CreateProcBLAS();
     CreateTLAS();
 
     CreateRayTracingPSO();
@@ -183,6 +196,7 @@ bool RT_Scene::Create(uint2 wndSize) noexcept
 
 void RT_Scene::CreateRayTracingPSO()
 {
+    using EDbgMode = DE::EShaderDebugMode;
     try
     {
         RayTracingPipelineStateCreateInfo PSOCreateInfo;
@@ -190,69 +204,27 @@ void RT_Scene::CreateRayTracingPSO()
         PSOCreateInfo.PSODesc.Name         = "Ray tracing PSO";
         PSOCreateInfo.PSODesc.PipelineType = PIPELINE_TYPE_RAY_TRACING;
 
-        ShaderCreateInfo ShaderCI;
-
-        // Create a shader source stream factory to load shaders from files.
-        RefCntAutoPtr<IShaderSourceInputStreamFactory> pShaderSourceFactory;
-        m_pEngineFactory->CreateDefaultShaderSourceStreamFactory(nullptr, &pShaderSourceFactory);
-        ShaderCI.pShaderSourceStreamFactory = pShaderSourceFactory;
-
         ShaderMacroHelper Macros;
         Macros.AddShaderMacro("HIT_SHADER_PER_INSTANCE", HitGroupStride);
         Macros.AddShaderMacro("PRIMARY_RAY_INDEX", PrimaryRayIndex);
         Macros.AddShaderMacro("SHADOW_RAY_INDEX", ShadowRayIndex);
         Macros.AddShaderMacro("NUM_TEXTURES", int(m_MaterialColorMaps.size()));
         Macros.AddShaderMacro("MAX_RECURSION_DEPTH", MaxRecursionDepth);
+        Macros.AddShaderMacro("NUM_OBJECTS", Uint32(m_PrimitiveOffsets.size()));
 
-        ShaderCI.Macros         = Macros;
-        ShaderCI.SourceLanguage = SHADER_SOURCE_LANGUAGE_GLSL_VERBATIM;
-
-        // Create ray generation shader.
         RefCntAutoPtr<IShader> pRG;
-        {
-            ShaderCI.Desc.ShaderType = SHADER_TYPE_RAY_GEN;
-            ShaderCI.EntryPoint      = "main";
-            ShaderCI.Desc.Name       = "Ray tracing RG";
-            ShaderCI.FilePath        = "RayTrace.rg";
-            m_pDevice->CreateShader(ShaderCI, &pRG);
-            CHECK_THROW(pRG != nullptr);
-        }
+        m_ShaderDebugger.CompileFromFile(&pRG, SHADER_TYPE_RAY_GEN, "RayTrace.rgen", "Ray tracing RG", Macros, EDbgMode::ClockHeatmap);
+        CHECK_THROW(pRG);
 
-        // Create ray miss shaders.
-        RefCntAutoPtr<IShader> pPrimaryMiss;
-        RefCntAutoPtr<IShader> pShadowMiss;
-        {
-            ShaderCI.Desc.ShaderType = SHADER_TYPE_RAY_MISS;
-            ShaderCI.EntryPoint      = "main";
+        RefCntAutoPtr<IShader> pPrimaryMiss, pShadowMiss;
+        m_ShaderDebugger.CompileFromFile(&pPrimaryMiss, SHADER_TYPE_RAY_MISS, "Primary.rmiss", "Primary miss shader", Macros, EDbgMode::Trace);
+        m_ShaderDebugger.CompileFromFile(&pShadowMiss, SHADER_TYPE_RAY_MISS, "Shadow.rmiss", "Shadow miss shader", Macros, EDbgMode::Trace);
+        CHECK_THROW(pPrimaryMiss && pShadowMiss);
 
-            ShaderCI.Desc.Name = "Primary miss shader";
-            ShaderCI.FilePath  = "Primary.rm";
-            m_pDevice->CreateShader(ShaderCI, &pPrimaryMiss);
-            CHECK_THROW(pPrimaryMiss != nullptr);
-
-            ShaderCI.Desc.Name = "Shadow miss shader";
-            ShaderCI.FilePath  = "Shadow.rm";
-            m_pDevice->CreateShader(ShaderCI, &pShadowMiss);
-            CHECK_THROW(pShadowMiss != nullptr);
-        }
-
-        // Create ray closest hit shader.
-        RefCntAutoPtr<IShader> pPrimaryOpaqueHit;
-        RefCntAutoPtr<IShader> pShadowHit;
-        {
-            ShaderCI.Desc.ShaderType = SHADER_TYPE_RAY_CLOSEST_HIT;
-            ShaderCI.EntryPoint      = "main";
-
-            ShaderCI.Desc.Name = "Primary ray triangle opaque hit shader";
-            ShaderCI.FilePath  = "PrimaryOpaqueHit.rch";
-            m_pDevice->CreateShader(ShaderCI, &pPrimaryOpaqueHit);
-            CHECK_THROW(pPrimaryOpaqueHit != nullptr);
-
-            ShaderCI.Desc.Name = "Shadow ray triangle hit shader";
-            ShaderCI.FilePath  = "ShadowHit.rch";
-            m_pDevice->CreateShader(ShaderCI, &pShadowHit);
-            CHECK_THROW(pShadowHit != nullptr);
-        }
+        RefCntAutoPtr<IShader> pPrimaryOpaqueHit, pShadowHit;
+        m_ShaderDebugger.CompileFromFile(&pPrimaryOpaqueHit, SHADER_TYPE_RAY_CLOSEST_HIT, "PrimaryOpaqueHit.rchit", "Primary ray triangle opaque hit shader", Macros, EDbgMode::Trace);
+        m_ShaderDebugger.CompileFromFile(&pShadowHit, SHADER_TYPE_RAY_CLOSEST_HIT, "ShadowHit.rchit", "Shadow ray triangle hit shader", Macros, EDbgMode::Trace);
+        CHECK_THROW(pPrimaryOpaqueHit && pShadowHit);
 
         const RayTracingGeneralShaderGroup GeneralShaders[] = {
             {"Main", pRG},
@@ -299,35 +271,10 @@ void RT_Scene::CreateToneMapPSO()
         PSOCreateInfo.GraphicsPipeline.RasterizerDesc.CullMode      = CULL_MODE_NONE;
         PSOCreateInfo.GraphicsPipeline.DepthStencilDesc.DepthEnable = False;
 
-        ShaderCreateInfo ShaderCI;
-
-        // Create a shader source stream factory to load shaders from files.
-        RefCntAutoPtr<IShaderSourceInputStreamFactory> pShaderSourceFactory;
-        m_pEngineFactory->CreateDefaultShaderSourceStreamFactory(nullptr, &pShaderSourceFactory);
-        ShaderCI.pShaderSourceStreamFactory = pShaderSourceFactory;
-
-        ShaderCI.UseCombinedTextureSamplers = true;
-        ShaderCI.SourceLanguage             = SHADER_SOURCE_LANGUAGE_GLSL_VERBATIM;
-
-        RefCntAutoPtr<IShader> pVS;
-        {
-            ShaderCI.Desc.ShaderType = SHADER_TYPE_VERTEX;
-            ShaderCI.EntryPoint      = "main";
-            ShaderCI.Desc.Name       = "Tone mapping vertex shader";
-            ShaderCI.FilePath        = "ToneMapping.vsh";
-            m_pDevice->CreateShader(ShaderCI, &pVS);
-            CHECK_THROW(pVS != nullptr);
-        }
-
-        RefCntAutoPtr<IShader> pPS;
-        {
-            ShaderCI.Desc.ShaderType = SHADER_TYPE_PIXEL;
-            ShaderCI.EntryPoint      = "main";
-            ShaderCI.Desc.Name       = "Tone mapping pixel shader";
-            ShaderCI.FilePath        = "ToneMapping.psh";
-            m_pDevice->CreateShader(ShaderCI, &pPS);
-            CHECK_THROW(pPS != nullptr);
-        }
+        RefCntAutoPtr<IShader> pVS, pPS;
+        m_ShaderDebugger.CompileFromFile(&pVS, SHADER_TYPE_VERTEX, "ToneMapping.vsh", "Tone mapping VS");
+        m_ShaderDebugger.CompileFromFile(&pPS, SHADER_TYPE_PIXEL, "ToneMapping.psh", "Tone mapping FS");
+        CHECK_THROW(pVS && pPS);
 
         PSOCreateInfo.pVS = pVS;
         PSOCreateInfo.pPS = pPS;
@@ -363,13 +310,14 @@ void RT_Scene::BindResources()
         BindAllVariables(m_pRayTracingSRB, RayTracingStages, "g_TLAS", m_pTLAS);
 
         BindAllVariables(m_pRayTracingSRB, RayTracingStages, "un_CameraAttribs", m_CameraAttribsCB);
-        BindAllVariables(m_pRayTracingSRB, RayTracingStages, "un_LightAttribs", m_LightAttribsCB);
+        //BindAllVariables(m_pRayTracingSRB, RayTracingStages, "un_LightAttribs", m_LightAttribsCB);
 
         BindAllVariables(m_pRayTracingSRB, RayTracingStages, "un_VertexAttribs", m_Model->GetBuffer(BufID::BUFFER_ID_VERTEX_BASIC_ATTRIBS)->GetDefaultView(BUFFER_VIEW_SHADER_RESOURCE));
         BindAllVariables(m_pRayTracingSRB, RayTracingStages, "un_Primitives", m_Model->GetBuffer(BufID::BUFFER_ID_TRIANGLES)->GetDefaultView(BUFFER_VIEW_SHADER_RESOURCE));
+        BindAllVariables(m_pRayTracingSRB, RayTracingStages, "un_Indices", m_Model->GetBuffer(BufID::BUFFER_ID_INDEX)->GetDefaultView(BUFFER_VIEW_SHADER_RESOURCE));
         BindAllVariables(m_pRayTracingSRB, RayTracingStages, "un_PrimitiveOffsets", reinterpret_cast<IDeviceObject* const*>(m_PrimitiveOffsets.data()), 0, Uint32(m_PrimitiveOffsets.size()));
 
-        BindAllVariables(m_pRayTracingSRB, RayTracingStages, "un_MaterialAttribs", m_MaterialAttribsSB->GetDefaultView(BUFFER_VIEW_SHADER_RESOURCE));
+        //BindAllVariables(m_pRayTracingSRB, RayTracingStages, "un_MaterialAttribs", m_MaterialAttribsSB->GetDefaultView(BUFFER_VIEW_SHADER_RESOURCE));
         BindAllVariables(m_pRayTracingSRB, RayTracingStages, "g_MaterialColorMaps", reinterpret_cast<IDeviceObject* const*>(m_MaterialColorMaps.data()), 0, Uint32(m_MaterialColorMaps.size()));
     }
 }
@@ -416,7 +364,7 @@ void RT_Scene::CreateBLAS()
     {
         std::vector<BLASTriangleDesc>      TriangleInfos;
         std::vector<BLASBuildTriangleData> TriangleData;
-        std::vector<Uint32>                PrimitiveOffsets;
+        std::vector<uint>                  IndexOffsets;
         std::vector<const char*>           GeometryNames;
     };
     PerInstance            Opaque;
@@ -429,7 +377,7 @@ void RT_Scene::CreateBLAS()
     IBuffer* TriangleBuffer = m_Model->GetBuffer(GLTF::Model::BUFFER_ID_TRIANGLES);
     if (TriangleBuffer == nullptr)
         return;
-
+    
     const Uint32 TriangleBufferSize = TriangleBuffer->GetDesc().uiSizeInBytes;
 
     for (auto* node : m_Model->LinearNodes)
@@ -445,12 +393,14 @@ void RT_Scene::CreateBLAS()
                 const char*            Name    = TempPool.CopyString(node->Name + "_" + std::to_string(i++));
 
                 VERIFY_EXPR((submesh.FirstTriangle + submesh.IndexCount / 3) * sizeof(PrimitiveAttribs) <= TriangleBufferSize);
+                VERIFY_EXPR(submesh.FirstIndex == submesh.FirstTriangle * 3);
+                VERIFY_EXPR(submesh.HasIndices());
 
-                if (mat.AlphaMode == GLTF::Material::ALPHA_MODE_OPAQUE)
+                if (mat.Attribs.AlphaMode == GLTF::Material::ALPHA_MODE_OPAQUE)
                 {
                     Opaque.TriangleInfos.emplace_back();
                     Opaque.TriangleData.emplace_back();
-                    Opaque.PrimitiveOffsets.push_back(submesh.FirstTriangle);
+                    Opaque.IndexOffsets.push_back(submesh.FirstTriangle);
                     Opaque.GeometryNames.push_back(Name);
                     Info    = &Opaque.TriangleInfos.back();
                     TriData = &Opaque.TriangleData.back();
@@ -459,7 +409,7 @@ void RT_Scene::CreateBLAS()
                 {
                     Translucent.TriangleInfos.emplace_back();
                     Translucent.TriangleData.emplace_back();
-                    Translucent.PrimitiveOffsets.push_back(submesh.FirstTriangle);
+                    Translucent.IndexOffsets.push_back(submesh.FirstTriangle);
                     Translucent.GeometryNames.push_back(Name);
                     Info    = &Translucent.TriangleInfos.back();
                     TriData = &Translucent.TriangleData.back();
@@ -535,10 +485,10 @@ void RT_Scene::CreateBLAS()
 
         BuffDesc.Name          = "opaque primitives offsets";
         BuffDesc.BindFlags     = BIND_SHADER_RESOURCE;
-        BuffDesc.uiSizeInBytes = Uint32(Opaque.PrimitiveOffsets.size() * sizeof(Opaque.PrimitiveOffsets[0]));
+        BuffDesc.uiSizeInBytes = Uint32(Opaque.IndexOffsets.size() * sizeof(Opaque.IndexOffsets[0]));
         BuffDesc.Mode          = BUFFER_MODE_RAW;
 
-        BufferData             BuffData{Opaque.PrimitiveOffsets.data(), BuffDesc.uiSizeInBytes};
+        BufferData             BuffData{Opaque.IndexOffsets.data(), BuffDesc.uiSizeInBytes};
         RefCntAutoPtr<IBuffer> Buff;
         m_pDevice->CreateBuffer(BuffDesc, &BuffData, &Buff);
         VERIFY_EXPR(Buff != nullptr);
@@ -554,10 +504,10 @@ void RT_Scene::CreateBLAS()
 
         BuffDesc.Name          = "translucent primitives offsets";
         BuffDesc.BindFlags     = BIND_SHADER_RESOURCE;
-        BuffDesc.uiSizeInBytes = Uint32(Translucent.PrimitiveOffsets.size() * sizeof(Translucent.PrimitiveOffsets[0]));
+        BuffDesc.uiSizeInBytes = Uint32(Translucent.IndexOffsets.size() * sizeof(Translucent.IndexOffsets[0]));
         BuffDesc.Mode          = BUFFER_MODE_RAW;
 
-        BufferData             BuffData{Translucent.PrimitiveOffsets.data(), BuffDesc.uiSizeInBytes};
+        BufferData             BuffData{Translucent.IndexOffsets.data(), BuffDesc.uiSizeInBytes};
         RefCntAutoPtr<IBuffer> Buff;
         m_pDevice->CreateBuffer(BuffDesc, &BuffData, &Buff);
         VERIFY_EXPR(Buff != nullptr);
@@ -663,13 +613,13 @@ void RT_Scene::CreateSBT()
     
         if (m_pOpaqueBLAS)
         {
-            m_pSBT->BindHitGroups(m_pTLAS, "Opaque",      PrimaryRayIndex, "PrimaryOpaqueHit");
-            m_pSBT->BindHitGroups(m_pTLAS, "Opaque",      ShadowRayIndex,  "ShadowHit");
+            m_pSBT->BindHitGroupForInstance(m_pTLAS, "Opaque",      PrimaryRayIndex, "PrimaryOpaqueHit");
+            m_pSBT->BindHitGroupForInstance(m_pTLAS, "Opaque",      ShadowRayIndex,  "ShadowHit");
         }
         if (m_pTranslucentBLAS)
         {
-            m_pSBT->BindHitGroups(m_pTLAS, "Translucent", PrimaryRayIndex, "PrimaryOpaqueHit");
-            m_pSBT->BindHitGroups(m_pTLAS, "Translucent", ShadowRayIndex,  "ShadowHit");
+            m_pSBT->BindHitGroupForInstance(m_pTLAS, "Translucent", PrimaryRayIndex, "PrimaryOpaqueHit");
+            m_pSBT->BindHitGroupForInstance(m_pTLAS, "Translucent", ShadowRayIndex,  "ShadowHit");
         }
         // clang-format on
     }
@@ -698,11 +648,12 @@ void RT_Scene::LoadScene(const char* Path)
 
         TextureDesc TexDesc;
         TexDesc.Name      = "White texture for RT Scene";
-        TexDesc.Type      = RESOURCE_DIM_TEX_2D;
+        TexDesc.Type      = RESOURCE_DIM_TEX_2D_ARRAY;
         TexDesc.Usage     = USAGE_IMMUTABLE;
         TexDesc.BindFlags = BIND_SHADER_RESOURCE;
         TexDesc.Width     = TexDim;
         TexDesc.Height    = TexDim;
+        TexDesc.ArraySize = 1;
         TexDesc.Format    = TEX_FORMAT_RGBA8_UNORM;
         TexDesc.MipLevels = 1;
         std::vector<Uint32>     Data(TexDim * TexDim, 0xFFFFFFFF);
@@ -889,10 +840,9 @@ void RT_Scene::Render()
         m_pContext->CommitShaderResources(m_pRayTracingSRB, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
         TraceRaysAttribs Attribs;
-        Attribs.DimensionX        = m_ColorUAV->GetTexture()->GetDesc().Width;
-        Attribs.DimensionY        = m_ColorUAV->GetTexture()->GetDesc().Height;
-        Attribs.pSBT              = m_pSBT;
-        Attribs.SBTTransitionMode = RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
+        Attribs.DimensionX = m_ColorUAV->GetTexture()->GetDesc().Width;
+        Attribs.DimensionY = m_ColorUAV->GetTexture()->GetDesc().Height;
+        Attribs.pSBT       = m_pSBT;
 
         m_pContext->TraceRays(Attribs);
     }

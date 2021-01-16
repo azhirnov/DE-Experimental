@@ -12,7 +12,6 @@ target_include_directories(${PROJECT_NAME}
 PUBLIC
     ../../../DiligentCore/ThirdParty/Vulkan-Headers/include
     ../../../DiligentCore/ThirdParty
-    ../../../DiligentSamples/Tutorials/Common/src/
     ../../ThirdParty/OpenVR/headers
     include
 )
@@ -20,7 +19,6 @@ PUBLIC
 target_link_libraries(${PROJECT_NAME}
 PUBLIC
     Diligent-BuildSettings
-    Diligent-TextureLoader
     Diligent-GraphicsTools
     glfw
     Diligent-GraphicsEngine

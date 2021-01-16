@@ -11,8 +11,8 @@ set(INCLUDE
 )
 
 set(SHADERS
-    assets/structures.fxh
-    assets/RayUtils.fxh
+    assets/structures.h
+    assets/RayUtils.h
     assets/CubePrimaryHit.rchit
     assets/GlassPrimaryHit.rchit
     assets/SpherePrimaryHit.rchit

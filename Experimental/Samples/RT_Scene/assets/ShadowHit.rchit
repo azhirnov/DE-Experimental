@@ -3,7 +3,7 @@
 #extension GL_GOOGLE_include_directive : require
 #extension GL_EXT_nonuniform_qualifier : require
 
-#include "structures.fxh"
+#include "structures.h"
 
 layout(location = PRIMARY_RAY_INDEX) rayPayloadInEXT ShadowPayload  payload;
 

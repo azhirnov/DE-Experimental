@@ -1,6 +1,6 @@
 cmake_minimum_required (VERSION 3.10)
 
-project(Sample.VR)
+project(Sample.VR_Test)
 
 set(SHADERS
     assets/cube_inst.vsh
@@ -22,7 +22,8 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SOURCES})
 source_group("src" FILES ${COMMON_SOURCE})
 source_group("assets" FILES ${ASSETS} ${SHADERS})
 
-target_link_libraries(${PROJECT_NAME} PUBLIC Tools.VR)
+target_link_libraries(${PROJECT_NAME} PUBLIC Tools.VR Diligent-TextureLoader)
+target_include_directories(${PROJECT_NAME} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../../../DiligentSamples/Tutorials/Common/src")
 
 if(WIN32)
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD

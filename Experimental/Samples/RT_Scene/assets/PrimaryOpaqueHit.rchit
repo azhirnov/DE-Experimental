@@ -3,14 +3,14 @@
 #extension GL_GOOGLE_include_directive : require
 #extension GL_EXT_nonuniform_qualifier : require
 
-#include "structures.fxh"
+#include "structures.h"
 
 layout(location = PRIMARY_RAY_INDEX) rayPayloadInEXT PrimaryPayload payload;
 hitAttributeEXT vec2  hitAttribs;
 
 #define SHADOW_RAY_CAST
-#include "Lighting.fxh"
-#include "Material.fxh"
+#include "Lighting.h"
+#include "Material.h"
 
 void main ()
 {

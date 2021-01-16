@@ -1,16 +1,16 @@
 cmake_minimum_required (VERSION 3.10)
 
-project(Sample.RT_Sponza)
+project(Sample.RT_Scene)
 
 set(SHADERS
-    assets/Primary.rm
-    assets/PrimaryOpaqueHit.rch
-    assets/Shadow.rm
-    assets/ShadowHit.rch
-    assets/RayTrace.rg
-    assets/structures.fxh
-    assets/Lighting.fxh
-    assets/Material.fxh
+    assets/Primary.rmiss
+    assets/PrimaryOpaqueHit.rchit
+    assets/Shadow.rmiss
+    assets/ShadowHit.rchit
+    assets/RayTrace.rgen
+    assets/structures.h
+    assets/Lighting.h
+    assets/Material.h
 
     assets/ToneMapping.psh
     assets/ToneMapping.vsh
@@ -31,6 +31,7 @@ target_include_directories(${PROJECT_NAME}
 PRIVATE
     ../../../DiligentSamples/SampleBase/include
     ../../../DiligentCore/ThirdParty/Vulkan-Headers/include
+    ../../../DiligentCore/ThirdParty
 )
 
 target_link_libraries(${PROJECT_NAME}
@@ -40,9 +41,7 @@ PRIVATE
     Diligent-GraphicsTools
     Diligent-AssetLoader
     glfw
-PUBLIC
-    Diligent-GraphicsEngine
-    Diligent-GraphicsEngineVk-static
+    Tools.ShaderDebugger
 )
 
 if(WIN32)
@@ -52,3 +51,6 @@ if(WIN32)
 endif()
 
 set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER "Exp.Samples")
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE SHADER_TRACE_DLL="${SHADER_TRACE_DLL}")
+target_compile_definitions(${PROJECT_NAME} PRIVATE DEBUG_TRACE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/dbg_shaders")

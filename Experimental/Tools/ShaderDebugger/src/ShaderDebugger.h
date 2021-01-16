@@ -51,31 +51,31 @@ public:
                                                    const void* pData    = nullptr,
                                                    Uint32      DataSize = 0) = 0;
 
-    virtual void DILIGENT_CALL_TYPE BindHitGroup(ITopLevelAS* pTLAS,
-                                                 const char*  pInstanceName,
-                                                 const char*  pGeometryName,
-                                                 Uint32       RayOffsetInHitGroupIndex,
-                                                 const char*  pShaderGroupName,
-                                                 const void*  pData    = nullptr,
-                                                 Uint32       DataSize = 0) = 0;
+    virtual void DILIGENT_CALL_TYPE BindHitGroupForGeometry(ITopLevelAS* pTLAS,
+                                                            const char*  pInstanceName,
+                                                            const char*  pGeometryName,
+                                                            Uint32       RayOffsetInHitGroupIndex,
+                                                            const char*  pShaderGroupName,
+                                                            const void*  pData    = nullptr,
+                                                            Uint32       DataSize = 0) = 0;
 
     virtual void DILIGENT_CALL_TYPE BindHitGroupByIndex(Uint32      BindingIndex,
                                                         const char* pShaderGroupName,
                                                         const void* pData    = nullptr,
                                                         Uint32      DataSize = 0) = 0;
 
-    virtual void DILIGENT_CALL_TYPE BindHitGroups(ITopLevelAS* pTLAS,
-                                                  const char*  pInstanceName,
-                                                  Uint32       RayOffsetInHitGroupIndex,
-                                                  const char*  pShaderGroupName,
-                                                  const void*  pData    = nullptr,
-                                                  Uint32       DataSize = 0) = 0;
+    virtual void DILIGENT_CALL_TYPE BindHitGroupForInstance(ITopLevelAS* pTLAS,
+                                                            const char*  pInstanceName,
+                                                            Uint32       RayOffsetInHitGroupIndex,
+                                                            const char*  pShaderGroupName,
+                                                            const void*  pData    = nullptr,
+                                                            Uint32       DataSize = 0) = 0;
 
-    virtual void DILIGENT_CALL_TYPE BindHitGroupForAll(ITopLevelAS* pTLAS,
-                                                       Uint32       RayOffsetInHitGroupIndex,
-                                                       const char*  pShaderGroupName,
-                                                       const void*  pData    = nullptr,
-                                                       Uint32       DataSize = 0) = 0;
+    virtual void DILIGENT_CALL_TYPE BindHitGroupForTLAS(ITopLevelAS* pTLAS,
+                                                        Uint32       RayOffsetInHitGroupIndex,
+                                                        const char*  pShaderGroupName,
+                                                        const void*  pData    = nullptr,
+                                                        Uint32       DataSize = 0) = 0;
 
 
     virtual void DILIGENT_CALL_TYPE BindCallableShader(const char* pShaderGroupName,
@@ -231,7 +231,7 @@ private:
     bool AllocBuffer(IDeviceContext* pContext, DebugMode& Dbg, Uint32 Size);
 
     bool BeginDebugging(IDeviceContext* pContext, IPipelineState*& pPipeline, const uint4& Header, SHADER_TYPE Stages, EShaderDebugMode Mode);
-    void ParseDebugOutput(IDeviceContext* pContext, DebugMode& DbgMode) const;
+    void ParseDebugOutput(IDeviceContext* pContext, DebugMode& DbgMode, Uint32& NumOutputs) const;
 
     void DefaultShaderDebugCallback(const char* Name, const std::vector<const char*>& Output) const;
 
@@ -265,6 +265,8 @@ private:
     void*            m_pSpvCompilerLib;
     SpvCompilerFn    m_CompilerFn  = {};
     SPV_COMP_VERSION m_CompilerVer = SPV_COMP_VERSION_VULKAN_1_0;
+
+    Uint32 m_FrameIdx = 0;
 };
 
 

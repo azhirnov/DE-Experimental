@@ -3,8 +3,8 @@
 #extension GL_GOOGLE_include_directive : require
 
 #define CAST_SHADOW_RAY
-#include "structures.fxh"
-#include "RayUtils.fxh"
+#include "structures.h"
+#include "RayUtils.h"
 
 hitAttributeEXT float2  hitAttribs;
 
